@@ -19,4 +19,6 @@ func main() {
 	fmt.Println("Genesis Index:", genesis.Index)
 	fmt.Println("Genesis Previous Hash:", genesis.PreviousHash)
 
+	fmt.Printf("Full Block Details: %+v\n", genesis)
+
 }

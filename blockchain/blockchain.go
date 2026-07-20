@@ -24,8 +24,8 @@ func NewBlockchain() *Blockchain {
 		Transactions: []transaction.Transaction{},
 		PreviousHash: GenesisPreviousHash,
 		Nonce:        0,
-		Hash:         "",
 	}
+	genesisBlock.Hash = genesisBlock.CalculateHash()
 
 	return &Blockchain{
 		Blocks: []block.Block{
