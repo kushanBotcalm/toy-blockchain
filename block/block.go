@@ -4,8 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"strings"
-	"time"
 
 	"toy-blockchain/transaction"
 )
@@ -40,16 +38,4 @@ func (b Block) CalculateHash() string {
 	hash := sha256.Sum256(bytes)
 
 	return hex.EncodeToString(hash[:])
-}
-func (b *Block) MineBlock(difficulty int) {
-	target := strings.Repeat("0", difficulty)
-	b.Timestamp = time.Now().Unix()
-
-	for {
-		b.Hash = b.CalculateHash()
-		if strings.HasPrefix(b.Hash, target) {
-			break
-		}
-		b.Nonce++
-	}
 }
