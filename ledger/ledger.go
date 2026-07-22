@@ -25,7 +25,7 @@ func (l *Ledger) ApplyTransaction(tx transaction.Transaction) error {
 	// Faucet or coinbase bypasses balance check
 	if tx.Sender != "FAUCET" {
 		if l.Balances[tx.Sender] < tx.Amount {
-			return errors.New("insufficient balance for transaction[cite: 1]")
+			return errors.New("insufficient balance for transaction")
 		}
 		l.Balances[tx.Sender] -= tx.Amount
 	}

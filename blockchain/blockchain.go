@@ -41,11 +41,11 @@ func NewBlockchain(difficulty int) *Blockchain {
 
 func (bc *Blockchain) AddTransaction(tx transaction.Transaction) error {
 	if tx.Amount <= 0 {
-		return errors.New("transaction amount must be non-positive[cite: 1]")
+		return errors.New("transaction amount must be non-positive")
 	}
 	if tx.Sender != "FAUCET" {
 		if bc.Ledger.GetBalance(tx.Sender) < tx.Amount {
-			return errors.New("sender has insufficient balance[cite: 1]")
+			return errors.New("sender has insufficient balance")
 		}
 	}
 	bc.PendingTxPool = append(bc.PendingTxPool, tx)
@@ -80,7 +80,7 @@ func (bc *Blockchain) MinePendingTransactions(minerAddress string) block.Block {
 	return newBlock
 }
 
-// IsValidChain validates entire chain integrity and tamper detection[cite: 1].
+// IsValidChain validates entire chain integrity and tamper detection
 func (bc *Blockchain) IsValidChain() (bool, int) {
 	for i := 1; i < len(bc.Blocks); i++ {
 		current := bc.Blocks[i]
@@ -97,4 +97,14 @@ func (bc *Blockchain) IsValidChain() (bool, int) {
 		}
 	}
 	return true, -1
+}
+
+// RebuildLedger recalculates all balances from the block history
+func (bc *Blockchain) RebuildLedger() {
+	bc.Ledger = ledger.NewLedger()
+	for _, block := range bc.Blocks {
+		for _, tx := range block.Transactions {
+			_ = bc.Ledger.ApplyTransaction(tx)
+		}
+	}
 }

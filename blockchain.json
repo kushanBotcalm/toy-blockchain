@@ -1,0 +1,62 @@
+{
+  "blocks": [
+    {
+      "index": 0,
+      "timestamp": 0,
+      "transactions": [],
+      "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "nonce": 0,
+      "hash": "2ee2960894bf300e510813fc0e3955c816ba5f815f1ed5c0743c434b1cc90022"
+    },
+    {
+      "index": 1,
+      "timestamp": 1784739135,
+      "transactions": [
+        {
+          "sender": "FAUCET",
+          "receiver": "Miner1",
+          "amount": 10
+        },
+        {
+          "sender": "FAUCET",
+          "receiver": "kushan",
+          "amount": 150
+        },
+        {
+          "sender": "FAUCET",
+          "receiver": "disnaka",
+          "amount": 50
+        }
+      ],
+      "previous_hash": "2ee2960894bf300e510813fc0e3955c816ba5f815f1ed5c0743c434b1cc90022",
+      "nonce": 102,
+      "hash": "0073bd9ec91f9892e8804dea59524570a7bd7463093b64e36d7e55d4aad3b3e6"
+    },
+    {
+      "index": 2,
+      "timestamp": 1784739205,
+      "transactions": [
+        {
+          "sender": "FAUCET",
+          "receiver": "Miner1",
+          "amount": 10
+        },
+        {
+          "sender": "kushan",
+          "receiver": "nimal",
+          "amount": 50
+        },
+        {
+          "sender": "kushan",
+          "receiver": "samn",
+          "amount": 50
+        }
+      ],
+      "previous_hash": "0073bd9ec91f9892e8804dea59524570a7bd7463093b64e36d7e55d4aad3b3e6",
+      "nonce": 216,
+      "hash": "00f834e65788cc37c207da2b982b5978e5e00c597f121a91a88db743a5f7bc3b"
+    }
+  ],
+  "pending_transactions": [],
+  "difficulty": 2
+}
