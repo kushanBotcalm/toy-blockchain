@@ -48,6 +48,9 @@ func (bc *Blockchain) AddTransaction(tx transaction.Transaction) error {
 			return errors.New("sender has insufficient balance")
 		}
 	}
+	if !transaction.VerifyTransaction(&tx) {
+		return errors.New("transaction signature is invalid")
+	}
 	bc.PendingTxPool = append(bc.PendingTxPool, tx)
 	return nil
 }

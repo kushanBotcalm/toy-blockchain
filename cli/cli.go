@@ -89,13 +89,23 @@ func (cli *CLI) handleAddTransaction() {
 		return
 	}
 
+	_, priv, err := transaction.GenerateKeyPair()
+	if err != nil {
+		fmt.Printf("Failed to generate key pair: %v\n", err)
+		return
+	}
+
 	tx := transaction.Transaction{
 		Sender:   sender,
 		Receiver: receiver,
 		Amount:   amount,
 	}
+	if err := transaction.SignTransaction(&tx, priv); err != nil {
+		fmt.Printf("Failed to sign transaction: %v\n", err)
+		return
+	}
 
-	err := cli.Blockchain.AddTransaction(tx)
+	err = cli.Blockchain.AddTransaction(tx)
 	if err != nil {
 		fmt.Printf("Failed to add transaction: %v\n", err)
 		return
