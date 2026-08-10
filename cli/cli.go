@@ -8,14 +8,16 @@ import (
 
 	"toy-blockchain/blockchain"
 	"toy-blockchain/transaction"
+	"toy-blockchain/wallet"
 )
 
 type CLI struct {
 	Blockchain *blockchain.Blockchain
+	Wallet     *wallet.Wallet
 }
 
-func NewCLI(bc *blockchain.Blockchain) *CLI {
-	return &CLI{Blockchain: bc}
+func NewCLI(bc *blockchain.Blockchain, w *wallet.Wallet) *CLI {
+	return &CLI{Blockchain: bc, Wallet: w}
 }
 
 // printUsage displays available commands clearly for the user
@@ -25,7 +27,7 @@ func printUsage() {
 	fmt.Println("  go run main.go <command> [arguments]")
 	fmt.Println()
 	fmt.Println("Available Commands:")
-	fmt.Println("  add       Add a transaction to the pending pool (-s SENDER -r RECEIVER -a AMOUNT)")
+	fmt.Println("  add       Add a transaction to the pending pool (-r RECEIVER -a AMOUNT)")
 	fmt.Println("  mine      Mine a new block from the pending pool (-m MINER_ADDRESS)")
 	fmt.Println("  print     Print the entire blockchain in a readable form")
 	fmt.Println("  validate  Validate the entire chain and check for tampering")
@@ -60,15 +62,11 @@ func (cli *CLI) Run() {
 }
 
 func (cli *CLI) handleAddTransaction() {
-	var sender, receiver string
+	var receiver string
 	var amount float64
 
 	for i := 2; i < len(os.Args); i++ {
 		switch os.Args[i] {
-		case "-s":
-			if i+1 < len(os.Args) {
-				sender = os.Args[i+1]
-			}
 		case "-r":
 			if i+1 < len(os.Args) {
 				receiver = os.Args[i+1]
@@ -83,29 +81,23 @@ func (cli *CLI) handleAddTransaction() {
 		}
 	}
 
-	if sender == "" || receiver == "" || amount <= 0 {
+	if cli.Wallet == nil || receiver == "" || amount <= 0 {
 		fmt.Println("Error: Invalid or missing arguments.")
-		fmt.Println("Example usage: go run main.go add -s FAUCET -r Alice -a 100")
-		return
-	}
-
-	_, priv, err := transaction.GenerateKeyPair()
-	if err != nil {
-		fmt.Printf("Failed to generate key pair: %v\n", err)
+		fmt.Println("Example usage: go run main.go add -r Alice -a 100")
 		return
 	}
 
 	tx := transaction.Transaction{
-		Sender:   sender,
+		Sender:   cli.Wallet.Address,
 		Receiver: receiver,
 		Amount:   amount,
 	}
-	if err := transaction.SignTransaction(&tx, priv); err != nil {
+	if err := transaction.SignTransaction(&tx, cli.Wallet.PrivateKey); err != nil {
 		fmt.Printf("Failed to sign transaction: %v\n", err)
 		return
 	}
 
-	err = cli.Blockchain.AddTransaction(tx)
+	err := cli.Blockchain.AddTransaction(tx)
 	if err != nil {
 		fmt.Printf("Failed to add transaction: %v\n", err)
 		return

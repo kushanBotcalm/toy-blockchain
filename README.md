@@ -49,6 +49,8 @@ Run the test suite from the project root:
 
 ```bash
 go test ./...
+go test ./transaction
+go test ./transaction -v
 ```
 
 ## CLI Commands
