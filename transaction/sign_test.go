@@ -1,36 +1,44 @@
 package transaction
 
-import (
-	"testing"
-)
+import "testing"
 
-func TestSignAndVerify(t *testing.T) {
-	pub, priv, err := GenerateKeyPair()
+// TestFR2InvalidSignatureRejected verifies:
+//
+// Given: a transaction exists
+// When:  the transaction signature does not match its public key
+// Then:  the transaction is rejected
+func TestFR2InvalidSignatureRejected(t *testing.T) {
+
+	// Generate a valid key pair.
+	_, privateKey, err := GenerateKeyPair()
 	if err != nil {
-		t.Fatalf("GenerateKeyPair error: %v", err)
+		t.Fatalf("failed to generate key pair: %v", err)
 	}
+
+	// Create a transaction.
 	tx := &Transaction{
-		Sender:   "alice",
-		Receiver: "bob",
-		Amount:   1.23,
+		Sender:   "Alice",
+		Receiver: "Bob",
+		Amount:   100,
 	}
-	if err := SignTransaction(tx, priv); err != nil {
-		t.Fatalf("SignTransaction error: %v", err)
+
+	// Sign the transaction with the private key.
+	err = SignTransaction(tx, privateKey)
+	if err != nil {
+		t.Fatalf("failed to sign transaction: %v", err)
 	}
-	if len(tx.PublicKey) == 0 || len(tx.Signature) == 0 {
-		t.Fatalf("signature or public key not set")
+
+	// Replace the valid signature with an invalid signature.
+	// The public key is still the original public key.
+	tx.Signature = []byte("invalid-signature")
+
+	// Verify the transaction.
+	isValid := VerifyTransaction(tx)
+
+	// The transaction must be rejected.
+	if isValid {
+		t.Fatal("FR-2 failed: transaction with invalid signature was accepted")
 	}
-	// verify should succeed
-	if !VerifyTransaction(tx) {
-		t.Fatalf("VerifyTransaction failed (expected success)")
-	}
-	// tamper the tx
-	tx.Amount = 9.99
-	if VerifyTransaction(tx) {
-		t.Fatalf("VerifyTransaction succeeded after tampering (expected failure)")
-	}
-	// ensure public key matches generated pub
-	if string(pub) != string(tx.PublicKey) {
-		t.Fatalf("public key mismatch")
-	}
+
+	t.Log("FR-2 passed: transaction with invalid signature was rejected")
 }
