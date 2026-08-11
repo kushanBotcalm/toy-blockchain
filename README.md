@@ -43,6 +43,32 @@ Or, if you built the binary:
 ./toy-blockchain
 ```
 
+## Service mode
+
+Start the HTTP node service with:
+
+```bash
+go run main.go -mode=serve -addr=":8080" -config=node_config.json
+```
+
+Create `node_config.json` first, for example:
+
+```json
+{
+  "address": "http://localhost:8080",
+  "peers": [
+    "http://localhost:8081",
+    "http://localhost:8082"
+  ]
+}
+```
+
+You can also set peers with an environment variable instead of editing the JSON file:
+
+```powershell
+set NODE_PEERS=127.0.0.1:8081,127.0.0.1:8082
+```
+
 ## Test
 
 Run the test suite from the project root:

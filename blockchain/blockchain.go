@@ -41,7 +41,7 @@ func NewBlockchain(difficulty int) *Blockchain {
 
 func (bc *Blockchain) AddTransaction(tx transaction.Transaction) error {
 	if tx.Amount <= 0 {
-		return errors.New("transaction amount must be non-positive")
+		return errors.New("transaction amount must be positive")
 	}
 	if tx.Sender != "FAUCET" {
 		if bc.Ledger.GetBalance(tx.Sender) < tx.Amount {
