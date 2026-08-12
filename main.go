@@ -30,6 +30,7 @@ func main() {
 			fmt.Printf("Error loading blockchain from file: %v\n", err)
 			return
 		}
+		bc.RebuildDeduper()
 		bc.RebuildLedger()
 	} else {
 		_ = storage.SaveToFile(dbFile, bc)

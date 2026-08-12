@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 )
@@ -66,4 +67,15 @@ func VerifyTransaction(tx *Transaction) bool {
 		return false
 	}
 	return ed25519.Verify(ed25519.PublicKey(tx.PublicKey), msg, tx.Signature)
+}
+
+// ID returns a stable identifier for a transaction based on its signable bytes.
+// The ID is the hex-encoded SHA-256 of the signable payload (sender, receiver, amount).
+func ID(tx *Transaction) (string, error) {
+	b, err := signableBytes(tx)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:]), nil
 }

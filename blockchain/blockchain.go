@@ -2,7 +2,10 @@ package blockchain
 
 import (
 	"errors"
+	"sync"
+
 	"toy-blockchain/block"
+	"toy-blockchain/dedup"
 	"toy-blockchain/ledger"
 	"toy-blockchain/mining"
 	"toy-blockchain/transaction"
@@ -13,16 +16,21 @@ const GenesisPreviousHash = "000000000000000000000000000000000000000000000000000
 type Blockchain struct {
 	Blocks        []block.Block             `json:"blocks"`
 	PendingTxPool []transaction.Transaction `json:"pending_transactions"`
+	PendingIndex  map[string]struct{}       `json:"-"`
+	PendingMu     sync.RWMutex              `json:"-"`
 	Difficulty    int                       `json:"difficulty"`
 	Ledger        *ledger.Ledger            `json:"-"`
+	Deduper       *dedup.Deduper            `json:"deduper,omitempty"`
 }
 
 func NewBlockchain(difficulty int) *Blockchain {
 	bc := &Blockchain{
 		Blocks:        []block.Block{},
 		PendingTxPool: []transaction.Transaction{},
+		PendingIndex:  make(map[string]struct{}),
 		Difficulty:    difficulty,
 		Ledger:        ledger.NewLedger(),
+		Deduper:       dedup.NewDeduper(),
 	}
 
 	// Create Genesis Block[cite: 1]
@@ -39,6 +47,33 @@ func NewBlockchain(difficulty int) *Blockchain {
 	return bc
 }
 
+func (bc *Blockchain) RebuildDeduper() {
+	if bc.Deduper == nil {
+		bc.Deduper = dedup.NewDeduper()
+	}
+	bc.Deduper.Reset()
+	bc.PendingIndex = make(map[string]struct{})
+
+	for _, blk := range bc.Blocks {
+		if blk.Hash != "" {
+			bc.Deduper.SeenBlock(blk.Hash)
+		}
+		for i := range blk.Transactions {
+			txID, err := transaction.ID(&blk.Transactions[i])
+			if err == nil {
+				bc.Deduper.SeenTransaction(txID)
+			}
+		}
+	}
+
+	for _, tx := range bc.PendingTxPool {
+		txID, err := transaction.ID(&tx)
+		if err == nil {
+			bc.PendingIndex[txID] = struct{}{}
+		}
+	}
+}
+
 func (bc *Blockchain) AddTransaction(tx transaction.Transaction) error {
 	if tx.Amount <= 0 {
 		return errors.New("transaction amount must be positive")
@@ -51,8 +86,29 @@ func (bc *Blockchain) AddTransaction(tx transaction.Transaction) error {
 	if !transaction.VerifyTransaction(&tx) {
 		return errors.New("transaction signature is invalid")
 	}
-	bc.PendingTxPool = append(bc.PendingTxPool, tx)
-	return nil
+
+	// compute transaction id for dedup/pending checks
+	txID, err := transaction.ID(&tx)
+	if err == nil {
+		if bc.Deduper != nil && bc.Deduper.SeenTransaction(txID) {
+			return errors.New("duplicate transaction")
+		}
+		// check pending index
+		bc.PendingMu.RLock()
+		_, pending := bc.PendingIndex[txID]
+		bc.PendingMu.RUnlock()
+		if pending {
+			return errors.New("transaction already pending")
+		}
+		// add to pending pool and index
+		bc.PendingMu.Lock()
+		bc.PendingTxPool = append(bc.PendingTxPool, tx)
+		bc.PendingIndex[txID] = struct{}{}
+		bc.PendingMu.Unlock()
+		return nil
+	}
+
+	return errors.New("failed to compute transaction ID")
 }
 
 func (bc *Blockchain) MinePendingTransactions(minerAddress string) block.Block {
@@ -61,7 +117,12 @@ func (bc *Blockchain) MinePendingTransactions(minerAddress string) block.Block {
 		Receiver: minerAddress,
 		Amount:   10.0,
 	}
+	bc.PendingMu.Lock()
 	allTx := append([]transaction.Transaction{rewardTx}, bc.PendingTxPool...)
+	// clear pending pool and index
+	bc.PendingTxPool = []transaction.Transaction{}
+	bc.PendingIndex = make(map[string]struct{})
+	bc.PendingMu.Unlock()
 
 	prevBlock := bc.Blocks[len(bc.Blocks)-1]
 	newBlock := block.Block{
@@ -79,7 +140,6 @@ func (bc *Blockchain) MinePendingTransactions(minerAddress string) block.Block {
 	}
 
 	bc.Blocks = append(bc.Blocks, newBlock)
-	bc.PendingTxPool = []transaction.Transaction{}
 	return newBlock
 }
 
