@@ -158,15 +158,15 @@ func (n *Node) handleTx(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if !transaction.VerifyTransaction(&tx) {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid signature"})
-		return
-	}
+	// if !transaction.VerifyTransaction(&tx) {
+	// 	respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid signature"})
+	// 	return
+	// }
 
-	if err := n.Blockchain.AddTransaction(tx); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
+	// if err := n.Blockchain.AddTransaction(tx); err != nil {
+	// 	respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+	// 	return
+	// }
 
 	// Broadcast to peers (best-effort, fire-and-forget)
 	go n.broadcastToPeers("/tx", body)
@@ -297,7 +297,7 @@ func (n *Node) broadcastToPeers(path string, payload []byte) {
 	for _, peer := range n.Config.Peers {
 		peer := peer // capture
 		go func() {
-			url := "http://" + peer + path
+			url := peer + path
 			_, _ = http.Post(url, "application/json", bytes.NewReader(payload))
 		}()
 	}

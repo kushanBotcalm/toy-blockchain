@@ -5,10 +5,10 @@ import (
 )
 
 // deduperJSON is the JSON representation used for persistence.
-type deduperJSON struct {
-	Transactions []string `json:"transactions"`
-	Blocks       []string `json:"blocks"`
-}
+// type deduperJSON struct {
+// 	Transactions []string `json:"transactions"`
+// 	Blocks       []string `json:"blocks"`
+// }
 
 // Deduper tracks processed transaction IDs and block hashes
 // so the node does not process or gossip duplicate items.

@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 
@@ -96,7 +98,20 @@ func (cli *CLI) handleAddTransaction() {
 		fmt.Printf("Failed to sign transaction: %v\n", err)
 		return
 	}
+	payload, _ := json.Marshal(tx)
 
+	for _, u := range []string{
+		"http://localhost:8081/tx",
+		"http://localhost:8082/tx",
+	} {
+		resp, err := http.Post(u, "application/json", bytes.NewReader(payload))
+		if err != nil {
+			fmt.Println("send failed:", u, err)
+			continue
+		}
+		defer resp.Body.Close()
+		fmt.Println(u, resp.StatusCode)
+	}
 	err := cli.Blockchain.AddTransaction(tx)
 	if err != nil {
 		fmt.Printf("Failed to add transaction: %v\n", err)

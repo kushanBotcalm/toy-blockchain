@@ -99,6 +99,57 @@
       "hash": "00d655359af7138e638de9c1c5949255c8eeb653b6a6d95e4770a3bb18707005"
     }
   ],
-  "pending_transactions": [],
-  "difficulty": 2
+  "pending_transactions": [
+    {
+      "sender": "e56d9e6a9ac61b45e422504ade87f663dde20e45bf57ba8110430a92586d2027",
+      "receiver": "Alice",
+      "amount": 3,
+      "public_key": "I4ro8l7PNbALyBNqUndHM+fAvuWp/u/VOF/rZWg0gW0=",
+      "signature": "5yX1FbEPbihtQsxPxadznJrK0kOECTjFqP3nglmEwJ2LHaxgU8embtFRyjZ+edctd6ewV2LzYWDbOvIJzNuYDg=="
+    },
+    {
+      "sender": "e56d9e6a9ac61b45e422504ade87f663dde20e45bf57ba8110430a92586d2027",
+      "receiver": "Alice",
+      "amount": 1,
+      "public_key": "I4ro8l7PNbALyBNqUndHM+fAvuWp/u/VOF/rZWg0gW0=",
+      "signature": "C0WvnbPDF+7ikLEFxnvL+6PzCotXAbLES+qHqRL7eQEVHZhRawH3jQigtYO/EY2Hb/xm+hyVcjYRDuUtyAKWCg=="
+    },
+    {
+      "sender": "e56d9e6a9ac61b45e422504ade87f663dde20e45bf57ba8110430a92586d2027",
+      "receiver": "Alice",
+      "amount": 2,
+      "public_key": "I4ro8l7PNbALyBNqUndHM+fAvuWp/u/VOF/rZWg0gW0=",
+      "signature": "A/QhbV74xg8cxtnK37oLpDgYKnWUdS2tdjj/fIqrVlspvJ+VzdYvHhBkAHuEHKK+NKg+Bjx/OW9hfZ8fthfsBg=="
+    },
+    {
+      "sender": "e56d9e6a9ac61b45e422504ade87f663dde20e45bf57ba8110430a92586d2027",
+      "receiver": "Alice",
+      "amount": 5,
+      "public_key": "I4ro8l7PNbALyBNqUndHM+fAvuWp/u/VOF/rZWg0gW0=",
+      "signature": "HPRZI99SDd+Q3OK3xllTWRij8nMiXyYLAbgdy+y/eHmUrI4z/+9jCPr2q91TOYC3shFAukLQZu/3oojknJCADA=="
+    },
+    {
+      "sender": "e56d9e6a9ac61b45e422504ade87f663dde20e45bf57ba8110430a92586d2027",
+      "receiver": "Alic",
+      "amount": 1,
+      "public_key": "I4ro8l7PNbALyBNqUndHM+fAvuWp/u/VOF/rZWg0gW0=",
+      "signature": "06FxCwQg0vzUJgY+QvefNKcdBa3TCrVJX+R6dIF6RVe8JNLET2646IPog6u+7fyXswD2JyxUdnBMvXxojEQ3CQ=="
+    },
+    {
+      "sender": "e56d9e6a9ac61b45e422504ade87f663dde20e45bf57ba8110430a92586d2027",
+      "receiver": "Alc",
+      "amount": 1,
+      "public_key": "I4ro8l7PNbALyBNqUndHM+fAvuWp/u/VOF/rZWg0gW0=",
+      "signature": "SvsuWLk7IajLO3ZFXzpciaqdhR5ua6i1Gg6b7feiicXUYBpy9LyQ+f+Z1MyRbDF/TYt7dTEBunYedh0I0uKaCQ=="
+    },
+    {
+      "sender": "e56d9e6a9ac61b45e422504ade87f663dde20e45bf57ba8110430a92586d2027",
+      "receiver": "Al",
+      "amount": 1,
+      "public_key": "I4ro8l7PNbALyBNqUndHM+fAvuWp/u/VOF/rZWg0gW0=",
+      "signature": "onaqBsG5x2cAfxwQwH7AXVv+GrdLlrfAu8XU4VyQYlN7Cj+sbDOI5mr2HIlZqawIDS8E2Sllz3Yigdq/YVB9Cg=="
+    }
+  ],
+  "difficulty": 2,
+  "deduper": {}
 }
