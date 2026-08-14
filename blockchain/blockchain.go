@@ -1,7 +1,11 @@
 package blockchain
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
 	"sync"
 
 	"toy-blockchain/block"
@@ -137,6 +141,20 @@ func (bc *Blockchain) MinePendingTransactions(minerAddress string) block.Block {
 	// Apply transactions to ledger
 	for _, tx := range allTx {
 		_ = bc.Ledger.ApplyTransaction(tx)
+	}
+	payload, _ := json.Marshal(newBlock)
+
+	for _, u := range []string{
+		"http://localhost:8081/block",
+		"http://localhost:8082/block",
+	} {
+		resp, err := http.Post(u, "application/json", bytes.NewReader(payload))
+		if err != nil {
+			fmt.Println("send failed:", u, err)
+			continue
+		}
+		defer resp.Body.Close()
+		fmt.Println(u, resp.StatusCode)
 	}
 
 	bc.Blocks = append(bc.Blocks, newBlock)
