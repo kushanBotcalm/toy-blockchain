@@ -27,6 +27,40 @@ type Blockchain struct {
 	Deduper       *dedup.Deduper            `json:"deduper,omitempty"`
 }
 
+func (bc *Blockchain) GetHeight() int {
+	bc.PendingMu.RLock()
+	defer bc.PendingMu.RUnlock()
+	return len(bc.Blocks) - 1
+}
+
+// GetLastBlock returns the head block safely
+func (bc *Blockchain) GetLastBlock() block.Block {
+	bc.PendingMu.RLock()
+	defer bc.PendingMu.RUnlock()
+	return bc.Blocks[len(bc.Blocks)-1]
+}
+
+// GetBlocksCopy returns a copy of blocks from index 'from' to end, safe for gossiping
+func (bc *Blockchain) GetBlocksCopy(from int) []block.Block {
+	bc.PendingMu.RLock()
+	defer bc.PendingMu.RUnlock()
+	if from < 0 || from >= len(bc.Blocks) {
+		return nil
+	}
+	result := make([]block.Block, len(bc.Blocks)-from)
+	copy(result, bc.Blocks[from:])
+	return result
+}
+
+// GetAllBlocksCopy returns a safe copy of entire chain
+func (bc *Blockchain) GetAllBlocksCopy() []block.Block {
+	bc.PendingMu.RLock()
+	defer bc.PendingMu.RUnlock()
+	result := make([]block.Block, len(bc.Blocks))
+	copy(result, bc.Blocks)
+	return result
+}
+
 func NewBlockchain(difficulty int) *Blockchain {
 	bc := &Blockchain{
 		Blocks:        []block.Block{},
