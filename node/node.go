@@ -73,6 +73,9 @@ func (n *Node) routes() http.Handler {
 	mux.HandleFunc("/block", n.handleBlock)
 	mux.HandleFunc("/height", n.handleHeight)
 	mux.HandleFunc("/blocks", n.handleBlocks)
+	// Phase 4: Sync and fork resolution endpoints
+	mux.HandleFunc("/sync", n.handleSync)
+	mux.HandleFunc("/sync/request", n.handleSyncRequest)
 	return mux
 }
 
@@ -108,7 +111,9 @@ func (n *Node) handleInfo(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (n *Node) handleChain(w http.ResponseWriter, _ *http.Request) {
-	respondJSON(w, http.StatusOK, n.Blockchain)
+	respondJSON(w, http.StatusOK, map[string]any{
+		"blocks": n.Blockchain.GetAllBlocksCopy(),
+	})
 }
 
 func (n *Node) handlePeers(w http.ResponseWriter, _ *http.Request) {
@@ -158,24 +163,24 @@ func (n *Node) handleTx(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// if !transaction.VerifyTransaction(&tx) {
-	// 	respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid signature"})
-	// 	return
-	// }
+	if !transaction.VerifyTransaction(&tx) {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid signature"})
+		return
+	}
 
-	// if err := n.Blockchain.AddTransaction(tx); err != nil {
-	// 	respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-	// 	return
-	// }
+	if err := n.Blockchain.AddTransaction(tx); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 
-	// Broadcast to peers (best-effort, fire-and-forget)
-	go n.broadcastToPeers("/tx", body)
+	//Broadcast to peers (best-effort, fire-and-forget)
 
 	respondJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
 }
 
 // handleBlock receives a block from a peer (POST /block).
 // It de-duplicates, validates PoW and linkage, and appends if it extends the chain.
+// PHASE 4: Now detects competing chains and triggers sync
 func (n *Node) handleBlock(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		respondJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "only POST allowed"})
@@ -200,80 +205,43 @@ func (n *Node) handleBlock(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// basic validation: pow and linkage
+	// basic validation: pow
 	if !mining.ValidatePoW(blk, n.Blockchain.Difficulty) {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid proof of work"})
 		return
 	}
 
-	last := n.Blockchain.Blocks[len(n.Blockchain.Blocks)-1]
-	if blk.PreviousHash != last.Hash {
-		// competing or out-of-order block — ask peer for sync in real implementation
-		respondJSON(w, http.StatusConflict, map[string]string{"status": "not extending"})
+	last := n.Blockchain.GetLastBlock()
+
+	// CASE 1: Block extends our chain
+	if blk.PreviousHash == last.Hash {
+		if err := n.applyAndAppendBlock(blk); err != nil {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		go n.broadcastToPeers("/block", body)
+		respondJSON(w, http.StatusAccepted, map[string]string{"status": "block accepted"})
 		return
 	}
 
-	// apply transactions to ledger
-	for _, tx := range blk.Transactions {
-		_ = n.Blockchain.Ledger.ApplyTransaction(tx)
-		// mark tx seen in deduper
-		if n.Blockchain.Deduper != nil {
-			if txID, err := transaction.ID(&tx); err == nil {
-				n.Blockchain.Deduper.SeenTransaction(txID)
-			}
+	// CASE 2: Competing chain (block doesn't extend our tip)
+	fmt.Printf("Received competing block at height %d. Initiating sync.\n", blk.Index)
+	go func() {
+		if len(n.Config.Peers) > 0 {
+			_ = n.SyncFromPeer(n.Config.Peers[0])
 		}
-	}
+	}()
 
-	// append block
-	n.Blockchain.Blocks = append(n.Blockchain.Blocks, blk)
-	if n.Blockchain.Deduper != nil && blk.Hash != "" {
-		n.Blockchain.Deduper.SeenBlock(blk.Hash)
-	}
-
-	// remove any included transactions from pending pool
-	n.Blockchain.PendingMu.Lock()
-	if len(n.Blockchain.PendingTxPool) > 0 {
-		keep := make([]transaction.Transaction, 0, len(n.Blockchain.PendingTxPool))
-		for _, ptx := range n.Blockchain.PendingTxPool {
-			id, err := transaction.ID(&ptx)
-			if err != nil {
-				keep = append(keep, ptx)
-				continue
-			}
-			// if tx was included in block, don't keep
-			included := false
-			for _, btx := range blk.Transactions {
-				bid, err := transaction.ID(&btx)
-				if err == nil && bid == id {
-					included = true
-					break
-				}
-			}
-			if !included {
-				keep = append(keep, ptx)
-			}
-		}
-		n.Blockchain.PendingTxPool = keep
-		// rebuild pending index
-		n.Blockchain.PendingIndex = make(map[string]struct{})
-		for _, ptx := range n.Blockchain.PendingTxPool {
-			if id, err := transaction.ID(&ptx); err == nil {
-				n.Blockchain.PendingIndex[id] = struct{}{}
-			}
-		}
-	}
-	n.Blockchain.PendingMu.Unlock()
-
-	// gossip accepted block to peers
-	go n.broadcastToPeers("/block", body)
-
-	respondJSON(w, http.StatusAccepted, map[string]string{"status": "block accepted"})
+	respondJSON(w, http.StatusConflict, map[string]string{"status": "competing block received, syncing"})
 }
 
 // handleHeight returns current chain height and head hash.
 func (n *Node) handleHeight(w http.ResponseWriter, _ *http.Request) {
-	last := n.Blockchain.Blocks[len(n.Blockchain.Blocks)-1]
-	respondJSON(w, http.StatusOK, map[string]any{"height": len(n.Blockchain.Blocks) - 1, "head": last.Hash})
+	last := n.Blockchain.GetLastBlock()
+	respondJSON(w, http.StatusOK, map[string]any{
+		"height": n.Blockchain.GetHeight(),
+		"head":   last.Hash,
+	})
 }
 
 // handleBlocks returns blocks optionally starting from a given index: /blocks?from=N
@@ -281,15 +249,15 @@ func (n *Node) handleBlocks(w http.ResponseWriter, r *http.Request) {
 	qs := r.URL.Query()
 	fromStr := qs.Get("from")
 	if fromStr == "" {
-		respondJSON(w, http.StatusOK, n.Blockchain.Blocks)
-		return
+		fromStr = "0"
 	}
 	from, err := strconv.Atoi(fromStr)
-	if err != nil || from < 0 || from >= len(n.Blockchain.Blocks) {
+	if err != nil || from < 0 {
 		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid from parameter"})
 		return
 	}
-	respondJSON(w, http.StatusOK, n.Blockchain.Blocks[from:])
+	blocks := n.Blockchain.GetBlocksCopy(from)
+	respondJSON(w, http.StatusOK, blocks)
 }
 
 // broadcastToPeers sends the given JSON payload to each configured peer at the provided path.
@@ -301,6 +269,182 @@ func (n *Node) broadcastToPeers(path string, payload []byte) {
 			_, _ = http.Post(url, "application/json", bytes.NewReader(payload))
 		}()
 	}
+}
+
+// handleSync handles both sync initiation and responses
+// GET /sync - returns peer's chain for pulling
+// POST /sync - receives full chain from peer for fork resolution
+func (n *Node) handleSync(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		// Peer is asking for our chain
+		respondJSON(w, http.StatusOK, map[string]any{
+			"height": n.Blockchain.GetHeight(),
+			"blocks": n.Blockchain.GetAllBlocksCopy(),
+		})
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		// We're receiving a chain from a peer (fork resolution)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read body"})
+			return
+		}
+
+		var syncPayload struct {
+			Blocks []block.Block `json:"blocks"`
+		}
+		if err := json.Unmarshal(body, &syncPayload); err != nil {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid sync JSON"})
+			return
+		}
+
+		// Validate and reorganise if competing chain is better
+		isValid, err := n.Blockchain.IsCompetingChainValid(syncPayload.Blocks)
+		if !isValid {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid competing chain: %v", err)})
+			return
+		}
+
+		// Reorganise to the competing chain
+		if err := n.Blockchain.Reorganise(syncPayload.Blocks); err != nil {
+			respondJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("reorganisation failed: %v", err)})
+			return
+		}
+
+		respondJSON(w, http.StatusOK, map[string]string{"status": "reorganised to competing chain"})
+		return
+	}
+
+	respondJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "only GET and POST allowed"})
+}
+
+// handleSyncRequest handles /sync/request?from=N to fetch blocks in batch
+// Used by lagging nodes to catch up
+func (n *Node) handleSyncRequest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		respondJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "only GET allowed"})
+		return
+	}
+
+	fromStr := r.URL.Query().Get("from")
+	if fromStr == "" {
+		fromStr = "0"
+	}
+
+	from, err := strconv.Atoi(fromStr)
+	if err != nil || from < 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid from parameter"})
+		return
+	}
+
+	blocks := n.Blockchain.GetBlocksCopy(from)
+	respondJSON(w, http.StatusOK, map[string]any{
+		"from":   from,
+		"blocks": blocks,
+	})
+}
+
+// SyncFromPeer attempts to sync the full chain from a peer
+func (n *Node) SyncFromPeer(peerURL string) error {
+	// 1. Get peer's height
+	resp, err := http.Get(peerURL + "/height")
+	if err != nil {
+		return fmt.Errorf("failed to get peer height: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var peerHeight struct {
+		Height int    `json:"height"`
+		Head   string `json:"head"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&peerHeight); err != nil {
+		return fmt.Errorf("failed to decode peer height: %w", err)
+	}
+
+	myHeight := n.Blockchain.GetHeight()
+	if peerHeight.Height <= myHeight {
+		fmt.Printf("Peer is not ahead. Peer height: %d, My height: %d\n", peerHeight.Height, myHeight)
+		return nil
+	}
+
+	// 2. Download missing blocks in batches
+	fmt.Printf("Syncing from peer %s (peer height: %d, my height: %d)\n", peerURL, peerHeight.Height, myHeight)
+
+	from := myHeight + 1
+	for from <= peerHeight.Height {
+		resp, err := http.Get(fmt.Sprintf("%s/sync/request?from=%d", peerURL, from))
+		if err != nil {
+			return fmt.Errorf("failed to fetch blocks from %d: %w", from, err)
+		}
+
+		var syncResp struct {
+			From   int           `json:"from"`
+			Blocks []block.Block `json:"blocks"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&syncResp); err != nil {
+			resp.Body.Close()
+			return fmt.Errorf("failed to decode sync response: %w", err)
+		}
+		resp.Body.Close()
+
+		if len(syncResp.Blocks) == 0 {
+			break
+		}
+
+		// 3. Validate and apply each block
+		for _, blk := range syncResp.Blocks {
+			if err := n.validateAndAppendBlock(blk); err != nil {
+				return fmt.Errorf("failed to apply synced block at height %d: %w", blk.Index, err)
+			}
+		}
+
+		from += len(syncResp.Blocks)
+	}
+
+	fmt.Printf("Sync complete. Chain height: %d\n", n.Blockchain.GetHeight())
+	return nil
+}
+
+// validateAndAppendBlock safely validates and appends a block during sync
+func (n *Node) validateAndAppendBlock(blk block.Block) error {
+	// Validate PoW
+	if !mining.ValidatePoW(blk, n.Blockchain.Difficulty) {
+		return fmt.Errorf("invalid PoW")
+	}
+
+	// Validate linkage
+	last := n.Blockchain.GetLastBlock()
+	if blk.PreviousHash != last.Hash {
+		return fmt.Errorf("broken chain linkage: expected %s, got %s", last.Hash, blk.PreviousHash)
+	}
+
+	// Validate all transactions
+	for _, tx := range blk.Transactions {
+		if !transaction.VerifyTransaction(&tx) {
+			return fmt.Errorf("invalid tx signature in synced block")
+		}
+	}
+
+	// Apply block (under lock via AppendBlock)
+	if err := n.Blockchain.AppendBlock(blk); err != nil {
+		return fmt.Errorf("failed to append block: %w", err)
+	}
+
+	// Remove included txs from pending pool
+	n.Blockchain.RemoveIncludedTransactions(blk.Transactions)
+
+	return nil
+}
+
+// applyAndAppendBlock safely applies a block and appends it to chain
+func (n *Node) applyAndAppendBlock(blk block.Block) error {
+	if err := n.Blockchain.AppendBlock(blk); err != nil {
+		return err
+	}
+	n.Blockchain.RemoveIncludedTransactions(blk.Transactions)
+	return nil
 }
 
 func (n *Node) Start(listenAddr string) error {
