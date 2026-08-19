@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"toy-blockchain/block"
 	"toy-blockchain/blockchain"
@@ -57,10 +58,11 @@ type Node struct {
 	Wallet      *wallet.Wallet
 	Config      Config
 	StorageFile string
+	WalletFile  string
 }
 
-func NewNode(bc *blockchain.Blockchain, w *wallet.Wallet, cfg Config, storageFile string) *Node {
-	return &Node{Blockchain: bc, Wallet: w, Config: cfg, StorageFile: storageFile}
+func NewNode(bc *blockchain.Blockchain, w *wallet.Wallet, cfg Config, storageFile string, walletFile string) *Node {
+	return &Node{Blockchain: bc, Wallet: w, Config: cfg, StorageFile: storageFile, WalletFile: walletFile}
 }
 
 func (n *Node) routes() http.Handler {
@@ -92,6 +94,10 @@ type walletInfo struct {
 type pendingInfo struct {
 	Count        int                       `json:"pending_count"`
 	Transactions []transaction.Transaction `json:"pending_transactions"`
+}
+
+type heightInfo struct {
+	Height int `json:"height"`
 }
 
 func (n *Node) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -131,6 +137,88 @@ func (n *Node) handlePending(w http.ResponseWriter, _ *http.Request) {
 		Count:        len(n.Blockchain.PendingTxPool),
 		Transactions: n.Blockchain.PendingTxPool,
 	})
+}
+
+// SyncFromPeers downloads and validates blocks missing from this node at startup.
+func (n *Node) SyncFromPeers() error {
+	for _, peer := range n.Config.Peers {
+		if err := n.syncFromPeer(peer); err != nil {
+			fmt.Printf("chain sync from %s failed: %v\n", peer, err)
+		}
+	}
+	return nil
+}
+
+func (n *Node) syncFromPeer(peer string) error {
+	client := &http.Client{Timeout: 5 * time.Second}
+	baseURL := strings.TrimRight(peer, "/")
+	var remote heightInfo
+	if err := getJSON(client, baseURL+"/height", &remote); err != nil {
+		return err
+	}
+
+	localHeight := n.Blockchain.GetHeight()
+	if remote.Height <= localHeight {
+		return nil
+	}
+
+	from := len(n.Blockchain.GetAllBlocksCopy())
+	var missing []block.Block
+	url := fmt.Sprintf("%s/blocks?from=%d", baseURL, from)
+	if err := getJSON(client, url, &missing); err != nil {
+		return err
+	}
+	if len(missing) != remote.Height-localHeight {
+		return fmt.Errorf("peer returned %d blocks, expected %d", len(missing), remote.Height-localHeight)
+	}
+
+	for _, candidate := range missing {
+		if err := n.validateNextBlock(candidate); err != nil {
+			return err
+		}
+		n.Blockchain.Blocks = append(n.Blockchain.Blocks, candidate)
+	}
+
+	n.Blockchain.RebuildDeduper()
+	n.Blockchain.RebuildLedger()
+	n.Wallet.SyncBalance(n.Blockchain.Ledger)
+	if err := storage.SaveToFile(n.StorageFile, n.Blockchain); err != nil {
+		return err
+	}
+	if err := wallet.SaveWallet(n.WalletFile, n.Wallet); err != nil {
+		return err
+	}
+	fmt.Printf("synced %d blocks from %s\n", len(missing), peer)
+	return nil
+}
+
+func (n *Node) validateNextBlock(candidate block.Block) error {
+	last := n.Blockchain.GetLastBlock()
+	if candidate.Index != last.Index+1 {
+		return fmt.Errorf("unexpected block index %d, expected %d", candidate.Index, last.Index+1)
+	}
+	if candidate.PreviousHash != last.Hash {
+		return fmt.Errorf("block %d does not extend local chain", candidate.Index)
+	}
+	if candidate.Hash != candidate.CalculateHash() {
+		return fmt.Errorf("block %d has invalid hash", candidate.Index)
+	}
+	if !mining.ValidatePoW(candidate, n.Blockchain.Difficulty) {
+		return fmt.Errorf("block %d has invalid proof of work", candidate.Index)
+	}
+	return nil
+}
+
+func getJSON(client *http.Client, url string, destination any) error {
+	resp, err := client.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GET %s returned status %d", url, resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(destination)
 }
 
 // handleTx receives a transaction from a client or peer (POST /tx).
@@ -261,10 +349,10 @@ func (n *Node) handleBlock(w http.ResponseWriter, r *http.Request) {
 	}
 	n.Blockchain.PendingMu.Unlock()
 
-	if err := wallet.SyncAllWalletBalances(n.Blockchain.Ledger); err != nil {
+	n.Wallet.SyncBalance(n.Blockchain.Ledger)
+	if err := wallet.SaveWallet(n.WalletFile, n.Wallet); err != nil {
 		fmt.Printf("wallet balance update failed: %v\n", err)
 	}
-	n.Wallet.SyncBalance(n.Blockchain.Ledger)
 	if err := storage.SaveToFile(n.StorageFile, n.Blockchain); err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to persist block"})
 		return

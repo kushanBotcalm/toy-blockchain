@@ -47,8 +47,8 @@ func main() {
 		return
 	}
 	nodeWallet.SyncBalance(bc.Ledger)
-	if err := wallet.SyncAllWalletBalances(bc.Ledger); err != nil {
-		fmt.Printf("Warning: failed to update wallet balances: %v\n", err)
+	if err := wallet.SaveWallet(walletFile, nodeWallet); err != nil {
+		fmt.Printf("Warning: failed to update wallet balance: %v\n", err)
 	}
 
 	if *mode == "serve" {
@@ -68,7 +68,10 @@ func main() {
 		fmt.Printf("Node wallet file: %s\n", walletFile)
 		fmt.Printf("Node wallet address: %s\n", nodeWallet.Address)
 		fmt.Printf("Node peers: %v\n", cfg.Peers)
-		n := node.NewNode(bc, nodeWallet, cfg, dbFile)
+		n := node.NewNode(bc, nodeWallet, cfg, dbFile, walletFile)
+		if err := n.SyncFromPeers(); err != nil {
+			fmt.Printf("Warning: chain synchronization failed: %v\n", err)
+		}
 		if err := n.Start(*addr); err != nil {
 			fmt.Printf("HTTP server failed: %v\n", err)
 		}

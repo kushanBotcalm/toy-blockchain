@@ -103,6 +103,23 @@ The `node_config.json` file now only contains the node address (peers are passed
 4. Peers receive the transaction and add it to their pools
 5. Duplicate detection ensures transactions aren't processed twice
 
+### Startup Chain Synchronization
+
+When a node starts with peers configured, it compares its height with each peer:
+
+1. Request the peer height with `GET /height`.
+2. If the peer is ahead, request missing blocks with `GET /blocks?from=N`.
+3. Validate each block's index, previous hash, hash, and proof of work.
+4. Append valid blocks, rebuild the ledger, and save the node's blockchain and wallet files.
+
+For example, start a late node with:
+
+```bash
+go run main.go -mode serve -addr :8082 -peers http://localhost:8080,http://localhost:8081
+```
+
+Without `-peers` or `NODE_PEERS`, a node has no source from which to synchronize.
+
 ## Test
 
 Run the test suite from the project root:
