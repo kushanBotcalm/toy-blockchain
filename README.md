@@ -8,7 +8,7 @@ A small Go-based blockchain simulator that demonstrates core concepts such as bl
 - Adds transactions to a pending pool
 - Mines new blocks with a simple proof-of-work implementation
 - Tracks balances in a ledger
-- Persists blockchain state to `blockchain.json`
+- Persists each node's blockchain state to its port-specific JSON file
 - Provides a command-line interface for common blockchain actions
 
 ## Requirements
@@ -43,31 +43,65 @@ Or, if you built the binary:
 ./toy-blockchain
 ```
 
-## Service mode
+## Service mode (Gossip Protocol)
 
-Start the HTTP node service with:
+The blockchain implements a gossip protocol where:
+- **Port 8080**: Main server that accepts transactions from CLI and gossips them to peers
+- **Peers (8081, 8082, etc.)**: Receive gossip messages and propagate them
+
+### Start Node 1 (Main Server - Port 8080)
 
 ```bash
-go run main.go -mode=serve -addr=":8080" -config=node_config.json
+go run main.go -mode serve -addr :8080
 ```
 
-Create `node_config.json` first, for example:
+Each node uses its own files: `blockchain_8080.json` and `wallet_8080.json` for port 8080, with matching names for ports 8081 and 8082. The default `blockchain.json` and `wallet.json` files are not used.
+
+### Start Node 2 (Peer - Port 8081)
+
+```bash
+go run main.go -mode serve -addr :8081 -peers http://localhost:8080
+```
+
+### Start Node 3 (Peer - Port 8082)
+
+```bash
+go run main.go -mode serve -addr :8082 -peers http://localhost:8080,http://localhost:8081
+```
+
+### Alternative: Using Environment Variables
+
+```powershell
+# Node 1
+set NODE_PEERS=
+go run main.go -mode serve -addr :8080
+
+# Node 2
+set NODE_PEERS=http://localhost:8080
+go run main.go -mode serve -addr :8081
+
+# Node 3
+set NODE_PEERS=http://localhost:8080,http://localhost:8081
+go run main.go -mode serve -addr :8082
+```
+
+### Configuration File
+
+The `node_config.json` file now only contains the node address (peers are passed via CLI or environment variables):
 
 ```json
 {
-  "address": "http://localhost:8080",
-  "peers": [
-    "http://localhost:8081",
-    "http://localhost:8082"
-  ]
+  "address": "e56d9e6a9ac61b45e422504ade87f663dde20e45bf57ba8110430a92586d2027"
 }
 ```
 
-You can also set peers with an environment variable instead of editing the JSON file:
+### How Gossip Works
 
-```powershell
-set NODE_PEERS=127.0.0.1:8081,127.0.0.1:8082
-```
+1. CLI sends a transaction to port 8080
+2. Port 8080 validates and adds the transaction to its pool
+3. Port 8080 automatically gossips the transaction to all configured peers
+4. Peers receive the transaction and add it to their pools
+5. Duplicate detection ensures transactions aren't processed twice
 
 ## Test
 
@@ -89,15 +123,29 @@ go run main.go help
 
 ### Add a transaction
 
-```bash
-go run main.go add -s FAUCET -r Alice -a 100
-```
-
-### Mine a new block
+The CLI sends transactions to the main server (port 8080), which then gossips to other peers:
 
 ```bash
-go run main.go mine -m MinerNode
+go run main.go add -s SENDER_ADDRESS -r RECEIVER_ADDRESS -a 100
 ```
+
+Where:
+- `-s` specifies the sender wallet address. The CLI loads the matching key from `wallet_8080.json`, `wallet_8081.json`, or `wallet_8082.json`.
+- `-r` specifies the receiver address
+- `-a` specifies the amount
+
+The transaction is automatically sent to http://localhost:8080/tx and gossipped to all configured peers.
+
+Mine to any of the three node wallets:
+
+```bash
+go run main.go mine -m <address from wallet_8080.json>
+go run main.go mine -m <address from wallet_8081.json>
+go run main.go mine -m <address from wallet_8082.json>
+```
+
+If `-m` is omitted, the CLI wallet address is used.
+`WALLET_8080_ADDRESS`, `WALLET_8081_ADDRESS`, and `WALLET_8082_ADDRESS` are documentation labels only; they are not wallet addresses.
 
 ### Print the blockchain
 
@@ -117,93 +165,12 @@ go run main.go validate
 go run main.go balance -a Alice
 ```
 
-## Phase 4: Networked Multi-Node Blockchain
-
-This version supports chain synchronisation, fork resolution, and race-free concurrent access.
-
-### Chain Synchronisation (FR-5)
-- New nodes can join the network and sync the full chain from peers
-- Nodes automatically catch up if they fall behind during mining
-- Blocks are validated during sync before appending to chain
-- **Endpoint**: `GET /sync/request?from=N` - Returns blocks starting from index N
-
-### Fork Resolution & Reorganisation (FR-6)
-- When two valid chains compete, nodes detect and reorganise to the longest valid chain
-- Orphaned transactions are returned to the pending pool if still valid
-- Ledger state is properly rebuilt after reorganisation
-- **Endpoint**: `POST /sync` - Receive competing chain and reorganise if valid
-
-### Concurrency Safety (FR-7)
-- **All block reads** are protected with `RWMutex` (fast reads, exclusive writes)
-- **All block writes** are protected with write locks during appends and reorganisations
-- **Pending pool** uses separate `PendingMu` mutex for thread-safe queue management
-- **Race-free**: Pass `go test -race ./...` with concurrent mining and gossip
-
-### New HTTP Endpoints (Phase 4)
-- `GET /sync` - Returns your chain (peers use this to pull data)
-- `POST /sync` - Send a competing chain for evaluation and potential reorganisation
-- `GET /sync/request?from=N` - Returns blocks in batches starting from index N
-- `GET /height` - Returns current height and head hash
-
-### Manual Testing: Start a Local Cluster
-
-```bash
-# Terminal 1: Start Node A (port 8001)
-go run main.go -mode=serve -addr=":8001" -config=node_a.json
-
-# Terminal 2: Start Node B (port 8002, peered with A)
-go run main.go -mode=serve -addr=":8002" -config=node_b.json
-
-# Terminal 3: Mine a block on A
-curl -X POST http://localhost:8001/mine -d '{"miner":"NodeA"}'
-
-# Terminal 4: Verify B synced automatically
-curl http://localhost:8002/height
-# Should show same height as A
-
-# Terminal 5: Stop B, mine on A, restart B - B will sync
-curl http://localhost:8001/mine -d '{"miner":"NodeA"}'
-# Restart B - it will sync the new block
-```
-
-### Design Decisions (Phase 4)
-
-**1. Fork Rule**: We use the **longest-chain rule**
-   - When a valid chain is longer than ours, we reorganise to it
-   - All blocks must pass PoW validation and transaction signature checks
-   
-**2. Concurrency Model**: Separate mutexes for blocks and pending pool
-   - `mu sync.RWMutex` - Protects Blocks slice and Ledger state
-   - `PendingMu sync.RWMutex` - Protects PendingTxPool and PendingIndex
-   - This allows pending pool updates while reading blocks for broadcast
-
-**3. Reorganisation Depth**: Unlimited
-   - We can reorganise multiple blocks if a competing chain is longer and valid
-   - All orphaned transactions are checked for validity before returning to pool
-
-**4. Sync Strategy**: Batch download with per-block validation
-   - Download blocks in batches via `/sync/request?from=N`
-   - Validate each block's PoW, linkage, and transactions before appending
-   - Reduces network chatter compared to block-by-block sync
-
-### Testing Race Conditions
-
-Verify there are no races under concurrent load:
-
-```bash
-go test -race ./...
-go test -race ./blockchain -v
-go test -race ./node -v
-```
-
-All concurrent operations (mining, gossip, sync, block acceptance) must be race-free.
-
 ## Design Notes
 
 - The project uses a deliberately simple blockchain design for learning and demonstration purposes.
 - Proof of work is implemented with a configurable difficulty value.
 - The ledger is rebuilt from block history when the app starts so the blockchain state can be recovered from disk.
-- Transaction state is persisted to `blockchain.json` in the project root.
+- Transaction state is persisted to the node's port-specific blockchain file in the project root.
 
 ## Known Limitations
 

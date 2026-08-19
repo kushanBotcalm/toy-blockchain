@@ -1,0 +1,78 @@
+{
+  "blocks": [
+    {
+      "index": 0,
+      "timestamp": 0,
+      "transactions": [],
+      "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "nonce": 0,
+      "hash": "2ee2960894bf300e510813fc0e3955c816ba5f815f1ed5c0743c434b1cc90022"
+    },
+    {
+      "index": 1,
+      "timestamp": 1787117588,
+      "transactions": [
+        {
+          "sender": "FAUCET",
+          "receiver": "e9b2c9f5190636fa389f98ec05ad79d47562459b789ae30f418acedb0f64bee4",
+          "amount": 10
+        }
+      ],
+      "previous_hash": "2ee2960894bf300e510813fc0e3955c816ba5f815f1ed5c0743c434b1cc90022",
+      "nonce": 333,
+      "hash": "0008da7084d98799fc32a68da55944a6dde25c46e0856c6f15b5b51059499f62"
+    },
+    {
+      "index": 2,
+      "timestamp": 1787117654,
+      "transactions": [
+        {
+          "sender": "FAUCET",
+          "receiver": "e142d861f5a90c440b5f202d34b68594124dc260cd840fa6e5926f8f1e0c280e",
+          "amount": 10
+        }
+      ],
+      "previous_hash": "0008da7084d98799fc32a68da55944a6dde25c46e0856c6f15b5b51059499f62",
+      "nonce": 441,
+      "hash": "00e42d7daa28c866952d25b81fc36a1cb548b032e384a8c19be599af457623b6"
+    },
+    {
+      "index": 3,
+      "timestamp": 1787117903,
+      "transactions": [
+        {
+          "sender": "FAUCET",
+          "receiver": "e142d861f5a90c440b5f202d34b68594124dc260cd840fa6e5926f8f1e0c280e",
+          "amount": 10
+        }
+      ],
+      "previous_hash": "00e42d7daa28c866952d25b81fc36a1cb548b032e384a8c19be599af457623b6",
+      "nonce": 455,
+      "hash": "00a7e6ec985202c169251c8c70742c3d4ae56c32e52783cb49c2f344f12e803a"
+    },
+    {
+      "index": 4,
+      "timestamp": 1787118035,
+      "transactions": [
+        {
+          "sender": "FAUCET",
+          "receiver": "cf5177c2d62b19b088f1683b917d57e4dc04dab6c7a5d3aa27228feb5ed731eb",
+          "amount": 10
+        },
+        {
+          "sender": "e142d861f5a90c440b5f202d34b68594124dc260cd840fa6e5926f8f1e0c280e",
+          "receiver": "cf5177c2d62b19b088f1683b917d57e4dc04dab6c7a5d3aa27228feb5ed731eb",
+          "amount": 5,
+          "public_key": "Q/JqJs6dc4I8cOjP3DKlK5XJuyBdbllskUK0WV3LtvI=",
+          "signature": "9Yr7heP+Xf28LM0tjIQPcWHxfRGnu0/swPq3oYLiHLJpLs6TPq9/gkjMxydBhLOOL7yrKn3IfE56vt7JJD4NCw=="
+        }
+      ],
+      "previous_hash": "00a7e6ec985202c169251c8c70742c3d4ae56c32e52783cb49c2f344f12e803a",
+      "nonce": 20,
+      "hash": "00c917e2b6b63a952138ddab653e84b0e7544f1c86ae787b213012d7d109c4c4"
+    }
+  ],
+  "pending_transactions": [],
+  "difficulty": 2,
+  "deduper": {}
+}

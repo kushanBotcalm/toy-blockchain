@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 
 	"toy-blockchain/ledger"
 )
@@ -67,6 +68,28 @@ func (w *Wallet) SyncBalance(l *ledger.Ledger) {
 	w.Balance = l.GetBalance(w.Address)
 }
 
+// SyncAllWalletBalances recalculates and persists the three node wallet files.
+func SyncAllWalletBalances(l *ledger.Ledger) error {
+	for _, path := range []string{
+		"wallet_8080.json",
+		"wallet_8081.json",
+		"wallet_8082.json",
+	} {
+		wallet, err := LoadWallet(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		wallet.SyncBalance(l)
+		if err := SaveWallet(path, wallet); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func LoadOrCreateWallet(path string) (*Wallet, error) {
 	if _, err := os.Stat(path); err == nil {
 		return LoadWallet(path)
@@ -79,4 +102,19 @@ func LoadOrCreateWallet(path string) (*Wallet, error) {
 		return nil, err
 	}
 	return wallet, nil
+}
+
+func WalletFileForListenAddr(listenAddr string) string {
+	addr := strings.TrimSpace(listenAddr)
+	addr = strings.TrimPrefix(addr, ":")
+	addr = strings.TrimPrefix(addr, "http://")
+	addr = strings.TrimPrefix(addr, "https://")
+	addr = strings.TrimPrefix(addr, "localhost")
+	addr = strings.Trim(addr, ":/")
+	addr = strings.ReplaceAll(addr, ":", "_")
+	addr = strings.ReplaceAll(addr, "/", "-")
+	if addr == "" {
+		addr = "default"
+	}
+	return "wallet_" + addr + ".json"
 }

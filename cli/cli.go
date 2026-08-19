@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
 
 	"toy-blockchain/blockchain"
+	"toy-blockchain/storage"
 	"toy-blockchain/transaction"
 	"toy-blockchain/wallet"
 )
@@ -29,7 +31,7 @@ func printUsage() {
 	fmt.Println("  go run main.go <command> [arguments]")
 	fmt.Println()
 	fmt.Println("Available Commands:")
-	fmt.Println("  add       Add a transaction to the pending pool (-r RECEIVER -a AMOUNT)")
+	fmt.Println("  add       Add a transaction to the pending pool (-s SENDER_ADDRESS -r RECEIVER -a AMOUNT)")
 	fmt.Println("  mine      Mine a new block from the pending pool (-m MINER_ADDRESS)")
 	fmt.Println("  print     Print the entire blockchain in a readable form")
 	fmt.Println("  validate  Validate the entire chain and check for tampering")
@@ -64,11 +66,16 @@ func (cli *CLI) Run() {
 }
 
 func (cli *CLI) handleAddTransaction() {
+	var senderAddress string
 	var receiver string
 	var amount float64
 
 	for i := 2; i < len(os.Args); i++ {
 		switch os.Args[i] {
+		case "-s":
+			if i+1 < len(os.Args) {
+				senderAddress = os.Args[i+1]
+			}
 		case "-r":
 			if i+1 < len(os.Args) {
 				receiver = os.Args[i+1]
@@ -83,36 +90,45 @@ func (cli *CLI) handleAddTransaction() {
 		}
 	}
 
-	if cli.Wallet == nil || receiver == "" || amount <= 0 {
+	senderWallet, err := cli.walletForAddress(senderAddress)
+	if senderWallet == nil || receiver == "" || amount <= 0 {
 		fmt.Println("Error: Invalid or missing arguments.")
-		fmt.Println("Example usage: go run main.go add -r Alice -a 100")
+		if err != nil {
+			fmt.Printf("Sender wallet error: %v\n", err)
+		}
+		fmt.Println("Example usage: go run main.go add -s SENDER_ADDRESS -r RECEIVER -a 100")
 		return
 	}
 
 	tx := transaction.Transaction{
-		Sender:   cli.Wallet.Address,
+		Sender:   senderWallet.Address,
 		Receiver: receiver,
 		Amount:   amount,
 	}
-	if err := transaction.SignTransaction(&tx, cli.Wallet.PrivateKey); err != nil {
+	if err := transaction.SignTransaction(&tx, senderWallet.PrivateKey); err != nil {
 		fmt.Printf("Failed to sign transaction: %v\n", err)
 		return
 	}
 	payload, _ := json.Marshal(tx)
 
-	for _, u := range []string{
-		"http://localhost:8081/tx",
-		"http://localhost:8082/tx",
-	} {
-		resp, err := http.Post(u, "application/json", bytes.NewReader(payload))
-		if err != nil {
-			fmt.Println("send failed:", u, err)
-			continue
-		}
-		defer resp.Body.Close()
-		fmt.Println(u, resp.StatusCode)
+	// Send transaction to port 8080 (main server) which will gossip to other peers
+	resp, err := http.Post("http://localhost:8080/tx", "application/json", bytes.NewReader(payload))
+	if err != nil {
+		fmt.Println("Failed to send transaction to server:", err)
+		return
 	}
-	err := cli.Blockchain.AddTransaction(tx)
+	defer resp.Body.Close()
+
+	// Read and print the response body for debugging
+	respBody, _ := io.ReadAll(resp.Body)
+	fmt.Println("Transaction sent to server (port 8080) with status:", resp.StatusCode)
+	if resp.StatusCode != http.StatusAccepted {
+		fmt.Printf("Server error response: %s\n", string(respBody))
+		return
+	}
+
+	// Keep the CLI copy in sync only after the server accepts the transaction.
+	err = cli.Blockchain.AddTransaction(tx)
 	if err != nil {
 		fmt.Printf("Failed to add transaction: %v\n", err)
 		return
@@ -121,7 +137,7 @@ func (cli *CLI) handleAddTransaction() {
 }
 
 func (cli *CLI) handleMineBlock() {
-	var minerAddress string
+	minerAddress := ""
 
 	for i := 2; i < len(os.Args); i++ {
 		if os.Args[i] == "-m" && i+1 < len(os.Args) {
@@ -129,16 +145,55 @@ func (cli *CLI) handleMineBlock() {
 		}
 	}
 
+	if minerAddress == "" && cli.Wallet != nil {
+		minerAddress = cli.Wallet.Address
+	}
+
 	if minerAddress == "" {
 		fmt.Println("Error: Missing miner address.")
-		fmt.Println("Example usage: go run main.go mine -m MinerNode")
+		fmt.Println("Example usage: go run main.go mine -m MINER_ADDRESS")
 		return
 	}
 
 	fmt.Println("Mining new block... Please wait")
 	minedBlock := cli.Blockchain.MinePendingTransactions(minerAddress)
+	if err := storage.SaveToFile(storage.BlockchainFileForListenAddr(":8080"), cli.Blockchain); err != nil {
+		fmt.Printf("Warning: failed to save blockchain: %v\n", err)
+	}
+	if err := cli.syncWalletBalances(); err != nil {
+		fmt.Printf("Warning: failed to update wallet balances: %v\n", err)
+	}
 
 	fmt.Printf("Success! Block mined at Index %d with Hash: %s (Nonce: %d)\n", minedBlock.Index, minedBlock.Hash, minedBlock.Nonce)
+}
+
+func (cli *CLI) syncWalletBalances() error {
+	return wallet.SyncAllWalletBalances(cli.Blockchain.Ledger)
+}
+
+func (cli *CLI) walletForAddress(address string) (*wallet.Wallet, error) {
+	if cli.Wallet != nil && (address == "" || cli.Wallet.Address == address) {
+		return cli.Wallet, nil
+	}
+	if address == "" {
+		return nil, nil
+	}
+
+	files, err := os.ReadDir(".")
+	if err != nil {
+		return nil, err
+	}
+	for _, file := range files {
+		name := file.Name()
+		if file.IsDir() || len(name) < len("wallet_.json") || name[:len("wallet_")] != "wallet_" || name[len(name)-len(".json"):] != ".json" {
+			continue
+		}
+		candidate, err := wallet.LoadWallet(name)
+		if err == nil && candidate.Address == address {
+			return candidate, nil
+		}
+	}
+	return nil, fmt.Errorf("no wallet found for sender address %s", address)
 }
 
 func (cli *CLI) handlePrintChain() {
@@ -174,6 +229,9 @@ func (cli *CLI) handleBalance() {
 		return
 	}
 
+	if err := cli.syncWalletBalances(); err != nil {
+		fmt.Printf("Warning: failed to update wallet balances: %v\n", err)
+	}
 	balance := cli.Blockchain.Ledger.GetBalance(address)
-	fmt.Printf("Account Balance for '%s': %.2f[cite: 1]\n", address, balance)
+	fmt.Printf("Account Balance for '%s': %.2f\n", address, balance)
 }

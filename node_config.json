@@ -1,7 +1,3 @@
 {
-  "address": "e56d9e6a9ac61b45e422504ade87f663dde20e45bf57ba8110430a92586d2027",
-  "peers": [
-    "http://localhost:8081",
-    "http://localhost:8082"
-  ]
+  "address": "e56d9e6a9ac61b45e422504ade87f663dde20e45bf57ba8110430a92586d2027"
 }
